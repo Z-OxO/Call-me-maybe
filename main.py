@@ -1,4 +1,7 @@
 from llm_sdk.llm_sdk import Small_LLM_Model
+from srcs.models import FonctionCatalog
+from pydantic import ValidationError
+from srcs.pydantic_errors_format import print_formatted_errors
 
 CATALOG = """fn_add_numbers(a: number, b: number) - Add two numbers together and return their sum.
 fn_add_numbers_list(list: list[number]) - Add a list of numbers together and return their sum.
@@ -68,5 +71,14 @@ def choose_fonction(
 
 
 if __name__ == "__main__":
-    llm: Small_LLM_Model = Small_LLM_Model()
-    print(choose_fonction("Whats the sum of 2 , 2 , 2 , 2", llm, NAMES))
+    # llm: Small_LLM_Model = Small_LLM_Model()
+    with open("data/input/functions_definition.json") as f:
+        try:
+            catalog = FonctionCatalog.model_validate_json(f.read())
+            print(catalog)
+        except (OSError, ValidationError) as e:
+            if isinstance(e, OSError):
+                print(f"{e}")
+            else:
+                print_formatted_errors(e.errors(include_url=False))
+    # print(choose_fonction("Whats the sum of 2 , 2 , 2 , 2", llm, NAMES))

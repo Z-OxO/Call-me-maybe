@@ -3,6 +3,7 @@ from typing_extensions import Self, Annotated
 from pydantic import BaseModel, RootModel, model_validator, Field
 from collections import Counter
 from srcs.constants import Colors
+from functools import cached_property
 
 ParameterType = Literal["number", "string", "boolean", "integer"]
 NoEmptyStr = Annotated[str, Field(min_length=1)]
@@ -12,14 +13,19 @@ class ParameterSpec(BaseModel):
     type: ParameterType
 
 
-class FonctionDefinitions(BaseModel):
+class FunctionDefinitions(BaseModel):
     name: NoEmptyStr
     description: NoEmptyStr
     parameters: dict[NoEmptyStr, ParameterSpec]
     returns: ParameterSpec
 
+    @property
+    def _function_repr(self) -> str:
+        args = ", ".join(f"{k}: {v.type}" for k, v in self.parameters.items())
+        return f"{self.name}({args}) - {self.description}"
 
-class FonctionCatalog(RootModel[list[FonctionDefinitions]]):
+
+class FunctionCatalog(RootModel[list[FunctionDefinitions]]):
     @model_validator(mode="after")
     def check_empty(self) -> Self:
         if not self.root:
@@ -36,3 +42,11 @@ class FonctionCatalog(RootModel[list[FonctionDefinitions]]):
                 f"{Colors.CYAN}{', '.join(dups)}{Colors.RESET}"
             )
         return self
+
+    @cached_property
+    def catalog_prompt(self) -> str:
+        return "\n".join([func._function_repr for func in self.root])
+
+    @cached_property
+    def function_choice(self) -> list[str]:
+        return [f"{func.name}<|im_end|>" for func in self.root]

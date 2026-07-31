@@ -22,19 +22,19 @@ def _get_formatted(error: ErrorDetails) -> str:
     ctx: dict[str, Any] = error.get("ctx", {})
     match error["type"]:
         case "missing":
-            return f"Object {index }: {path} is required but missing"
+            return f"Object {index}: {path} is required but missing"
         case "string_too_short":
-            return f"Object {index }: {path} cannot be empty"
+            return f"Object {index}: {path} cannot be empty"
         case "string_type":
-            return f"Object {index }: {path} must be text"
+            return f"Object {index}: {path} must be text"
         case "dict_type" | "model_type":
-            return f"Object {index }: path must be an object"
+            return f"Object {index}: path must be an object"
         case "list_type":
-            return f"Object {index }: {path} must be an array"
+            return f"Object {index}: {path} must be an array"
         case "literal_error":
             allowed = _paint(str(ctx.get("expected", "?")), Colors.GREEN)
             got = _paint(error["input"], Colors.YELLOW)
-            return f"Object {index }: {path} got {got}, expected {allowed}"
+            return f"Object {index}: {path} got {got}, expected {allowed}"
         case "value_error":
             return str(ctx.get("error", error["msg"]))
         case "json_invalid":

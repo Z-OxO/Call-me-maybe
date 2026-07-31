@@ -1,5 +1,5 @@
 from llm_sdk.llm_sdk import Small_LLM_Model
-from srcs.models import FonctionCatalog
+from srcs.models import FunctionCatalog
 from pydantic import ValidationError
 from srcs.pydantic_errors_format import print_formatted_errors
 
@@ -20,13 +20,13 @@ NAMES = [
 ]
 
 
-def build_prompt(request: str) -> str:
+def build_prompt(request: str, catalog: str) -> str:
     return (
         "<|im_start|>system\n"
         "You select the function that answers the user request. "
         "Reply with the function name only.<|im_end|>\n"
         "<|im_start|>user\n"
-        f"Available functions:\n{CATALOG}\n\n"
+        f"Available functions:\n{catalog}\n\n"
         f"Request: {request}\n"
         "Which function?<|im_end|>\n"
         "<|im_start|>assistant\n"
@@ -35,7 +35,7 @@ def build_prompt(request: str) -> str:
 
 
 def choose_fonction(
-    question: str, llm: Small_LLM_Model, names: list[str]
+    question: str, llm: Small_LLM_Model, names: list[str], catalog: str
 ) -> tuple[str, int]:
     """
     Use a tree to represent the tokens options (branches), minimal forward by
@@ -45,7 +45,8 @@ def choose_fonction(
     iter -> transform the dict to a generator (by the key)
     -> next() -> take the unique element of branches)
     """
-    context = llm.encode(build_prompt(question))[0].tolist()
+    print(build_prompt(question, catalog))
+    context = llm.encode(build_prompt(question, catalog))[0].tolist()
     encoded = [llm.encode(name)[0].tolist() for name in names]
 
     generated: list[int] = []
@@ -56,7 +57,6 @@ def choose_fonction(
         branches: dict[int, list[int]] = {}
         for i in alive:
             branches.setdefault(encoded[i][len(generated)], []).append(i)
-
         if len(branches) == 1:
             token = next(iter(branches))
         else:
@@ -67,18 +67,26 @@ def choose_fonction(
         generated.append(token)
         alive = branches[token]
 
-    return llm.decode(generated).removesuffix("<|im_end|>"), forwards
+    return names[alive[0]].removesuffix("<|im_end|>"), forwards
 
 
 if __name__ == "__main__":
-    # llm: Small_LLM_Model = Small_LLM_Model()
+    llm: Small_LLM_Model = Small_LLM_Model()
     with open("data/input/functions_definition.json") as f:
         try:
-            catalog = FonctionCatalog.model_validate_json(f.read())
-            print(catalog)
+            catalog = FunctionCatalog.model_validate_json(f.read())
         except (OSError, ValidationError) as e:
             if isinstance(e, OSError):
                 print(f"{e}")
             else:
                 print_formatted_errors(e.errors(include_url=False))
-    # print(choose_fonction("Whats the sum of 2 , 2 , 2 , 2", llm, NAMES))
+            exit()
+    print(catalog.function_choice)
+    print(
+        choose_fonction(
+            "Whats the sum of 2 , 2 , 2 , 2",
+            llm,
+            catalog.function_choice,
+            catalog.catalog_prompt,
+        )
+    )

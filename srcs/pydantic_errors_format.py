@@ -1,13 +1,13 @@
 import sys
 import os
 from pydantic_core import ErrorDetails
-from typing import Any
+from typing import Any, TextIO
 from srcs.constants import Colors
 
 
-def _paint(text: str, code: str) -> str:
-    """Wrap text in an ANSI code when stderr is a terminal."""
-    if os.environ.get("NO_COLOR") or not sys.stderr.isatty():
+def _paint(text: str, code: str, stream: TextIO | None = None) -> str:
+    out = stream if stream is not None else sys.stderr
+    if os.environ.get("NO_COLOR") or not out.isatty():
         return text
     return f"{code}{text}{Colors.RESET}"
 
@@ -28,13 +28,18 @@ def _get_formatted(error: ErrorDetails) -> str:
         case "string_type":
             return f"Object {index}: {path} must be text"
         case "dict_type" | "model_type":
-            return f"Object {index}: path must be an object"
+            return f"Object {repr(index)}: path must be an object"
         case "list_type":
             return f"Object {index}: {path} must be an array"
         case "literal_error":
             allowed = _paint(str(ctx.get("expected", "?")), Colors.GREEN)
             got = _paint(error["input"], Colors.YELLOW)
             return f"Object {index}: {path} got {got}, expected {allowed}"
+        case "duplicate_names":
+            names = ", ".join(ctx.get("names", []))
+            return f"Duplicate function names: {_paint(names, Colors.CYAN)}"
+        case "empty_catalog":
+            return "Functions catalog cannot be empty"
         case "value_error":
             return str(ctx.get("error", error["msg"]))
         case "json_invalid":
@@ -46,4 +51,4 @@ def _get_formatted(error: ErrorDetails) -> str:
 
 def print_formatted_errors(errors: list[ErrorDetails]):
     for error in errors:
-        print(_get_formatted(error))
+        print(_get_formatted(error), file=sys.stderr)

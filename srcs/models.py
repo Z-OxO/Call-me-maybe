@@ -1,8 +1,8 @@
 from typing import Literal
 from typing_extensions import Self, Annotated
 from pydantic import BaseModel, RootModel, model_validator, Field
+from pydantic_core import PydanticCustomError
 from collections import Counter
-from srcs.constants import Colors
 from functools import cached_property
 
 ParameterType = Literal["number", "string", "boolean", "integer"]
@@ -37,9 +37,10 @@ class FunctionCatalog(RootModel[list[FunctionDefinitions]]):
         names = [function.name for function in self.root]
         dups = [name for name, count in Counter(names).items() if count > 1]
         if dups:
-            raise ValueError(
-                f"Duplicate function names: "
-                f"{Colors.CYAN}{', '.join(dups)}{Colors.RESET}"
+            raise PydanticCustomError(
+                "duplicate_names",
+                "duplicate function names: {names}",
+                {"names": dups},
             )
         return self
 

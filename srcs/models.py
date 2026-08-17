@@ -20,6 +20,11 @@ class FunctionDefinitions(BaseModel):
     returns: ParameterSpec
 
     @property
+    def _function_repr_desc(self) -> str:
+        args = ", ".join(f"{k}: {v.type}" for k, v in self.parameters.items())
+        return f"{self.name}({args}) - {self.description}"
+
+    @property
     def _function_repr(self) -> str:
         args = ", ".join(f"{k}: {v.type}" for k, v in self.parameters.items())
         return f"{self.name}({args}) - {self.description}"
@@ -46,7 +51,7 @@ class FunctionCatalog(RootModel[list[FunctionDefinitions]]):
 
     @cached_property
     def catalog_prompt(self) -> str:
-        return "\n".join([func._function_repr for func in self.root])
+        return "\n".join([func._function_repr_desc for func in self.root])
 
     @cached_property
     def function_choice(self) -> list[str]:

@@ -2,14 +2,14 @@ from srcs.models import FunctionCatalog, FunctionDefinitions
 from llm_sdk.llm_sdk import Small_LLM_Model
 
 
-class FunctionsSelector():
+class FunctionsSelector:
     def __init__(self, llm: Small_LLM_Model, catalog: FunctionCatalog) -> None:
         self.llm = llm
         self.catalog = catalog
         self.encoded = [
             llm.encode(f"{function.name}<|im_end|>")[0].tolist()
             for function in catalog.root
-            ]
+        ]
 
     def _build_prompt(self, request: str) -> str:
         return (
@@ -37,7 +37,6 @@ class FunctionsSelector():
 
         generated: list[int] = []
         alive = list(range(len(self.encoded)))
-        forwards = 0
 
         while len(alive) > 1:
             branches: dict[int, list[int]] = {}
@@ -51,7 +50,6 @@ class FunctionsSelector():
                 logits = self.llm.get_logits_from_input_ids(
                     context + generated
                 )
-                forwards += 1
                 token = max(branches, key=logits.__getitem__)
 
             generated.append(token)

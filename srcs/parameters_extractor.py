@@ -2,8 +2,12 @@ from llm_sdk.llm_sdk import Small_LLM_Model
 from typing import Generator, TypeAlias, Callable
 from srcs.models import FunctionDefinitions, ParameterType
 from srcs.vocab import Vocab
+from srcs.constants import FORBIDDEN_STR
+from functools import partial
 
-MaskGen: TypeAlias = Generator[tuple[int, ...], int, tuple[int, ...] | None]
+MaskGen: TypeAlias = Generator[
+    tuple[int, ...] | None, int, tuple[int, ...] | None
+]
 MaskFactory: TypeAlias = Callable[[tuple[int, ...]], MaskGen]
 
 
@@ -13,7 +17,10 @@ class ParameterExtractor:
         self.vocab = vocab
 
         self.MASK: dict[ParameterType, MaskFactory] = {
-            "boolean": self._mask_bool
+            "boolean": self._mask_bool,
+            "number": self._mask_numeric,
+            "integer": partial(self._mask_numeric, is_integer=True),
+            "string": self._mask_strings,
         }
 
     def _inject(self, prompt: str, chunk: str) -> tuple[str, list[int]]:
@@ -33,6 +40,21 @@ class ParameterExtractor:
             "<think>\n\n</think>\n\n"
         )
 
+    def _pick(self, logits: list[float], ends: dict[str, int]) -> int:
+        while True:
+            token = max(range(len(logits)), key=logits.__getitem__)
+            piece = self.llm.decode([token])
+            stop = ends.get(piece[:1])
+            if stop is not None:
+                return stop
+            if FORBIDDEN_STR.isdisjoint(piece):
+                return token
+            logits[token] = float("-inf")
+
+    def _mask_strings(self, stop) -> MaskGen:
+        while True:
+            yield None
+
     def _mask_bool(self, stop: tuple[int, ...]) -> MaskGen:
         token = yield self.vocab.true_ids[0], self.vocab.false_ids[0]
         return (
@@ -41,25 +63,25 @@ class ParameterExtractor:
             else self.vocab.false_ids[:1]
         )
 
-    def _mask_numeric(self, stop: tuple[int, ...], is_integer: bool = False) -> MaskGen:
-        dot = False
-        sign = False
-
+    def _mask_numeric(
+        self, stop: tuple[int, ...], is_integer: bool = False
+    ) -> MaskGen:
+        started = dot = digit = digit_after_dot = False
         while True:
-            nb_ids = self.vocab.number_ids
-            if not dot and not sign:
-                token = yield self.vocab.number_ids + self.vocab.sign_ids
-            if sign and not dot:
-                token = yield self.vocab.number_ids
-            if sign and token in self.vocab.number_ids:
-                token = yield self.vocab.number_ids + (self.vocab.dot_id, )
-            if dot and token not in self.vocab.number_ids:
-                token = yield self.vocab.number_ids
-            if dot and token in self.vocab.number_ids:
-                token = yield self.vocab.number_ids + stop
-
-
-
+            allowed = self.vocab.number_ids
+            if not started:
+                allowed += self.vocab.sign_ids
+            if digit and not dot and not is_integer:
+                allowed += (self.vocab.dot_id,)
+            if digit and (not dot or digit_after_dot):
+                allowed += stop
+            token = yield allowed
+            started = True
+            if token == self.vocab.dot_id:
+                dot = True
+            elif token in self.vocab.number_ids:
+                digit_after_dot = dot
+                digit = True
 
     def generate(
         self, context: list[int], type: ParameterType, stop: tuple[int, ...]
@@ -71,18 +93,26 @@ class ParameterExtractor:
 
         gen: MaskGen = self.MASK[type](stop)
         generated: list[int] = []
+        ends = {self.llm.decode([t]): t for t in stop}
         allowed = next(gen)
         while True:
             logits = self.llm.get_logits_from_input_ids(context + generated)
-            token = max(allowed, key=logits.__getitem__)
+            if allowed is None:
+                token = self._pick(logits, ends)
+            else:
+                token = max(allowed, key=logits.__getitem__)
             if token in stop:
                 return generated
+            generated.append(token)
+            print(self.llm.decode([token]))
             try:
                 allowed = gen.send(token)
             except StopIteration as end:
                 return generated + list(end.value or ())
 
-    def extract(self, func: FunctionDefinitions, request: str):
+    def extract(
+        self, func: FunctionDefinitions, request: str
+    ) -> dict[str, str]:
         prompt = self.build_prompt(func, request) + "{"
         ids = self.llm.encode(prompt)[0].tolist()
         result: dict[str, str] = {}
@@ -94,7 +124,15 @@ class ParameterExtractor:
 
             prompt, ids = self._inject(prompt, chunk)
 
-            value_ids = self.generate(ids, parameter.type, ())
+            value_ids = self.generate(
+                ids,
+                parameter.type,
+                (
+                    self.vocab.brace_close_id,
+                    self.vocab.comma_id,
+                    self.vocab.quote_id,
+                ),
+            )
             result[name] = self.llm.decode(value_ids)
             prompt, ids = self._inject(prompt, result[name])
 

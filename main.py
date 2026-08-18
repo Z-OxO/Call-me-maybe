@@ -23,5 +23,5 @@ if __name__ == "__main__":
     selector = FunctionsSelector(llm, catalog)
     extractor = ParameterExtractor(llm, Vocab.from_llm(llm))
 
-    function = selector.choose_fonction("Turn on push notifications")
-    print(extractor.extract(function, "Turn on push notifications"))
+    function = selector.choose_fonction("Greet shrek")
+    print(extractor.extract(function, "Greet shrek"))

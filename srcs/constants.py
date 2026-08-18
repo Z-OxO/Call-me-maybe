@@ -1,5 +1,7 @@
 from enum import StrEnum
 
+FORBIDDEN_STR = frozenset('"\\') | {chr(c) for c in range(0x20)}
+
 
 class Colors(StrEnum):
     RESET = "\033[0m"

@@ -3,12 +3,13 @@ from dataclasses import dataclass
 
 # from pydantic.dataclasses import dataclass
 from llm_sdk.llm_sdk import Small_LLM_Model
+from srcs.constants import FORBIDDEN_STR
 
 
 @dataclass(frozen=True, slots=True)
 class Vocab:
     number_ids: tuple[int, ...]
-    # string_forbidden: np.ndarray
+    str_forbidden: tuple[int, ...]
     sign_ids: tuple[int, ...]
     true_ids: tuple[int, ...]
     false_ids: tuple[int, ...]
@@ -20,12 +21,12 @@ class Vocab:
     @classmethod
     def from_llm(cls, llm: Small_LLM_Model) -> "Vocab":
 
-        numbers: tuple[int, ...] = (
-            *llm.encode("0123456789")[0].tolist(),
-            llm.encode("-")[0].tolist()[0],
-            llm.encode(".")[0].tolist()[0]
+        numbers: tuple[int, ...] = (*llm.encode("0123456789")[0].tolist(),)
+
+        str_forbidden = tuple(
+            (llm.encode(c)[0].tolist()[0] for c in FORBIDDEN_STR)
         )
-        signs = llm.encode("-").tolist()[0], llm.encode("+").tolist()[0]
+        signs = llm.encode("-")[0].tolist()[0], llm.encode("+")[0].tolist()[0]
         true: tuple[int, ...] = tuple(llm.encode("true")[0].tolist())
         false: tuple[int, ...] = tuple(llm.encode("false")[0].tolist())
         dot: int = llm.encode(".")[0].tolist()[0]
@@ -33,4 +34,14 @@ class Vocab:
         comma: int = llm.encode(",")[0].tolist()[0]
         brace_close: int = llm.encode("}")[0].tolist()[0]
 
-        return cls(numbers, signs, true, false, dot, quote, comma, brace_close)
+        return cls(
+            numbers,
+            str_forbidden,
+            signs,
+            true,
+            false,
+            dot,
+            quote,
+            comma,
+            brace_close,
+        )

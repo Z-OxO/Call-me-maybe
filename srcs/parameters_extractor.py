@@ -1,8 +1,8 @@
 from llm_sdk.llm_sdk import Small_LLM_Model
-from typing import Generator, TypeAlias, Callable
+from typing import Generator, TypeAlias, Callable, Any
 from srcs.models import FunctionDefinitions, ParameterType
 from srcs.vocab import Vocab
-from srcs.constants import FORBIDDEN_STR
+from srcs.constants import FORBIDDEN_STR, MAX_TOKEN
 from functools import partial
 
 MaskGen: TypeAlias = Generator[
@@ -30,11 +30,17 @@ class ParameterExtractor:
     @staticmethod
     def build_prompt(func: FunctionDefinitions, request: str) -> str:
         return (
-            "<|im_start|>system"
-            "Extract the arguments as JSON.<|im_end|>"
+            "<|im_start|>system\n"
+            "Extract the function arguments from the request as JSON.\n"
+            "Copy values from the request. Use literal characters, not their names.\n"
+            "Keep values short: no regex groups, no alternation.\n"
+            "Example:\n"
+            "Request: Replace all letters in 'a1b2' with LETTERS\n"
+            '{"source_string": "a1b2", "regex": "[a-z]", "replacement": "LETTERS"}", '
+            '"replacement": "."}\n'
+            "<|im_end|>\n"
             "<|im_start|>user\n"
-            f"Function: {func._function_repr}\n"
-            f"Purpose: {func.description}\n"
+            f"{func._function_repr}\n"
             f"Request: {request}<|im_end|>\n"
             "<|im_start|>assistant\n"
             "<think>\n\n</think>\n\n"
@@ -83,6 +89,24 @@ class ParameterExtractor:
                 digit_after_dot = dot
                 digit = True
 
+    @staticmethod
+    def _format_result(
+        func: FunctionDefinitions, raw: dict[str, str]
+    ) -> dict[str, Any]:
+        out: dict[str, Any] = {}
+        for name, spec in func.parameters.items():
+            text = raw[name].strip()
+            match spec.type:
+                case "number":
+                    out[name] = float(text)
+                case "integer":
+                    out[name] = int(text)
+                case "boolean":
+                    out[name] = text == "true"
+                case _:
+                    out[name] = text
+        return out
+
     def generate(
         self, context: list[int], type: ParameterType, stop: tuple[int, ...]
     ):
@@ -104,7 +128,10 @@ class ParameterExtractor:
             if token in stop:
                 return generated
             generated.append(token)
-            print(self.llm.decode([token]))
+            if len(generated) > MAX_TOKEN:
+                raise ValueError(
+                    f"Value not completed after {MAX_TOKEN} tokens"
+                )
             try:
                 allowed = gen.send(token)
             except StopIteration as end:
@@ -135,8 +162,7 @@ class ParameterExtractor:
             )
             result[name] = self.llm.decode(value_ids)
             prompt, ids = self._inject(prompt, result[name])
-
             if parameter.type == "string":
                 prompt += '"'
 
-        return result
+        return self._format_result(func, result)

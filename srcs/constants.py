@@ -1,6 +1,8 @@
 from enum import StrEnum
 
-FORBIDDEN_STR = frozenset('"\\') | {chr(c) for c in range(0x20)}
+
+FORBIDDEN_STR = frozenset('"') | {chr(c) for c in range(0x20)}
+MAX_TOKEN = 67
 
 
 class Colors(StrEnum):

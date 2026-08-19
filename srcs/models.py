@@ -9,6 +9,18 @@ ParameterType = Literal["number", "string", "boolean", "integer"]
 NoEmptyStr = Annotated[str, Field(min_length=1)]
 
 
+class Prompt(BaseModel):
+    prompt: NoEmptyStr
+
+
+class PromptsDefinition(RootModel[list[Prompt]]):
+    @model_validator(mode="after")
+    def check_empty(self) -> Self:
+        if not self.root:
+            raise ValueError("Prompts test suite cannot be empty")
+        return self
+
+
 class ParameterSpec(BaseModel):
     type: ParameterType
 
@@ -26,8 +38,8 @@ class FunctionDefinitions(BaseModel):
 
     @property
     def _function_repr(self) -> str:
-        args = ", ".join(f"{k}: {v.type}" for k, v in self.parameters.items())
-        return f"{self.name}({args}) - {self.description}"
+        args = "\n".join(f"  {k}: {v.type}" for k, v in self.parameters.items())
+        return f"{self.name} — {self.description}\nParameters:\n{args}"
 
 
 class FunctionCatalog(RootModel[list[FunctionDefinitions]]):

@@ -8,6 +8,12 @@ from src.constants import FORBIDDEN_STR
 
 @dataclass(frozen=True, slots=True)
 class Vocab:
+    """Token ids the JSON masks need, resolved once for a tokenizer.
+
+    Built from the model, then kept immutable: the object no longer
+    depends on the SDK once created.
+    """
+
     number_ids: tuple[int, ...]
     str_forbidden: tuple[int, ...]
     sign_ids: tuple[int, ...]
@@ -20,6 +26,20 @@ class Vocab:
 
     @classmethod
     def from_llm(cls, llm: Small_LLM_Model) -> "Vocab":
+        """Look up every token id the masks rely on.
+
+        Args:
+            llm: The model whose tokenizer is used.
+
+        Returns:
+            A Vocab holding the digit, sign, literal and punctuation
+            token ids.
+
+        Raises:
+            ValueError: if the tokenizer splits one of the required
+                characters into several tokens. The masks work on
+                single ids, so they cannot express that case.
+        """
 
         numbers: tuple[int, ...] = (*llm.encode("0123456789")[0].tolist(),)
 

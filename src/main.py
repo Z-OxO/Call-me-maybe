@@ -17,17 +17,49 @@ from src.vocab import Vocab
 
 
 def load_catalog(path: Path) -> FunctionCatalog:
+    """Read and validate the function definitions file.
+
+    Args:
+        path: Path to the JSON file.
+
+    Returns:
+        The validated catalog.
+
+    Raises:
+        OSError: if the file cannot be read.
+        ValidationError: if the content does not match the schema.
+    """
     with open(path, encoding="utf-8") as f:
         return FunctionCatalog.model_validate_json(f.read())
 
 
 def load_prompts(path: Path) -> PromptsDefinition:
+    """Read and validate the prompts file.
+
+    Args:
+        path: Path to the JSON file.
+
+    Returns:
+        The validated prompt list.
+
+    Raises:
+        OSError: if the file cannot be read.
+        ValidationError: if the content does not match the schema.
+    """
     with open(path, encoding="utf-8") as f:
         return PromptsDefinition.model_validate_json(f.read())
 
 
 def write_results(path: Path, results: list[dict[str, Any]]) -> None:
-    """Write the function calls, creating the output directory if needed."""
+    """Write the function calls, creating the directory if needed.
+
+    Args:
+        path: Where to write the JSON file.
+        results: One object per prompt.
+
+    Raises:
+        OSError: if the file cannot be written.
+    """
     path.parent.mkdir(parents=True, exist_ok=True)
     with open(path, "w", encoding="utf-8") as f:
         json.dump(results, f, indent=2, ensure_ascii=False)
@@ -35,6 +67,7 @@ def write_results(path: Path, results: list[dict[str, Any]]) -> None:
 
 
 def parse_args() -> argparse.Namespace:
+    """Parse the command line, falling back to the data/ layout."""
     parser = argparse.ArgumentParser(prog="src")
     parser.add_argument(
         "--functions_definition", type=Path, default=DEFAULT_FUNCTIONS
@@ -45,6 +78,11 @@ def parse_args() -> argparse.Namespace:
 
 
 def main() -> int:
+    """Load the inputs, run the pipeline, write the results.
+
+    Returns:
+        0 on success, 1 if anything went wrong.
+    """
     args = parse_args()
 
     try:

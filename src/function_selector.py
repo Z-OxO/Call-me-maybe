@@ -3,7 +3,23 @@ from llm_sdk.llm_sdk import Small_LLM_Model
 
 
 class FunctionsSelector:
+    """Picks the function that answers a request.
+
+    The name is generated token by token under a trie constraint, so
+    the model can only ever spell out a name that exists.
+    """
+
     def __init__(self, llm: Small_LLM_Model, catalog: FunctionCatalog) -> None:
+        """Store the model and pre-encode every function name.
+
+        Each name gets "<|im_end|>" appended before encoding. That
+        makes the set prefix-free, so a name that is a prefix of
+        another one stays reachable.
+
+        Args:
+            llm: The model used to encode and score tokens.
+            catalog: The functions to choose from.
+        """
         self.llm = llm
         self.catalog = catalog
         self.encoded = [
@@ -12,6 +28,7 @@ class FunctionsSelector:
         ]
 
     def _build_prompt(self, request: str) -> str:
+        """Build the chat prompt listing the functions and the request."""
         return (
             "<|im_start|>system\n"
             "You select the function that answers the user request. "
@@ -25,13 +42,19 @@ class FunctionsSelector:
         )
 
     def choose_fonction(self, request: str) -> FunctionDefinitions:
-        """
-        Use a tree to represent the tokens options (branches),
-        minimal forward by construction.
-        If there is one choice of token we skip the forward
-        Acces to the first element of the dico by
-        iter -> transform the dict to a generator (by the key)
-        -> next() -> take the unique element of branches)
+        """Generate a function name under a trie constraint.
+
+        At each step we group the still-matching names by their next
+        token. If they all agree, that token is forced and we skip the
+        forward pass. If they disagree, we run the model and keep the
+        highest-scoring branch. Either way the result is always a real
+        function name.
+
+        Args:
+            request: The natural-language request.
+
+        Returns:
+            The chosen function definition.
         """
         context = self.llm.encode(self._build_prompt(request))[0].tolist()
 

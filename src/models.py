@@ -38,7 +38,9 @@ class FunctionDefinitions(BaseModel):
 
     @property
     def _function_repr(self) -> str:
-        args = "\n".join(f"  {k}: {v.type}" for k, v in self.parameters.items())
+        args = "\n".join(
+            f"  {k}: {v.type}" for k, v in self.parameters.items()
+        )
         return f"{self.name} — {self.description}\nParameters:\n{args}"
 
 

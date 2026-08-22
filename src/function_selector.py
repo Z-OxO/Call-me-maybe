@@ -1,4 +1,4 @@
-from srcs.models import FunctionCatalog, FunctionDefinitions
+from src.models import FunctionCatalog, FunctionDefinitions
 from llm_sdk.llm_sdk import Small_LLM_Model
 
 

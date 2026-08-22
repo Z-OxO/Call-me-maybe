@@ -1,9 +1,11 @@
-from llm_sdk.llm_sdk import Small_LLM_Model
+import sys
 from typing import Generator, TypeAlias, Callable, Any
-from srcs.models import FunctionDefinitions, ParameterType
-from srcs.vocab import Vocab
-from srcs.constants import FORBIDDEN_STR, MAX_TOKEN
 from functools import partial
+
+from llm_sdk.llm_sdk import Small_LLM_Model
+from src.models import FunctionDefinitions, ParameterType
+from src.vocab import Vocab
+from src.constants import FORBIDDEN_STR, MAX_TOKEN
 
 MaskGen: TypeAlias = Generator[
     tuple[int, ...] | None, int, tuple[int, ...] | None
@@ -36,8 +38,8 @@ class ParameterExtractor:
             "Keep values short: no regex groups, no alternation.\n"
             "Example:\n"
             "Request: Replace all letters in 'a1b2' with LETTERS\n"
-            '{"source_string": "a1b2", "regex": "[a-z]", "replacement": "LETTERS"}", '
-            '"replacement": "."}\n'
+            '{"source_string": "a1b2", "regex": "[a-z]", '
+            '"replacement": "LETTERS"}\n'
             "<|im_end|>\n"
             "<|im_start|>user\n"
             f"{func._function_repr}\n"
@@ -50,6 +52,9 @@ class ParameterExtractor:
         while True:
             token = max(range(len(logits)), key=logits.__getitem__)
             piece = self.llm.decode([token])
+            if not piece:
+                logits[token] = float("-inf")
+                continue
             stop = ends.get(piece[:1])
             if stop is not None:
                 return stop
@@ -57,16 +62,16 @@ class ParameterExtractor:
                 return token
             logits[token] = float("-inf")
 
-    def _mask_strings(self, stop) -> MaskGen:
+    def _mask_strings(self, stop: tuple[int, ...]) -> MaskGen:
         while True:
             yield None
 
     def _mask_bool(self, stop: tuple[int, ...]) -> MaskGen:
         token = yield self.vocab.true_ids[0], self.vocab.false_ids[0]
         return (
-            self.vocab.true_ids[:1]
+            self.vocab.true_ids[1:]
             if token == self.vocab.true_ids[0]
-            else self.vocab.false_ids[:1]
+            else self.vocab.false_ids[1:]
         )
 
     def _mask_numeric(
@@ -95,7 +100,7 @@ class ParameterExtractor:
     ) -> dict[str, Any]:
         out: dict[str, Any] = {}
         for name, spec in func.parameters.items():
-            text = raw[name].strip()
+            text = raw[name]
             match spec.type:
                 case "number":
                     out[name] = float(text)
@@ -109,17 +114,19 @@ class ParameterExtractor:
 
     def generate(
         self, context: list[int], type: ParameterType, stop: tuple[int, ...]
-    ):
-        """
-        Take a context as input, its the encoded prompt.
-        parameter: type function type
-        """
-
+    ) -> list[int]:
         gen: MaskGen = self.MASK[type](stop)
         generated: list[int] = []
         ends = {self.llm.decode([t]): t for t in stop}
         allowed = next(gen)
+        safe = 0
+
         while True:
+            if allowed is None or not set(stop).isdisjoint(allowed):
+                safe = len(generated)
+            if len(generated) >= MAX_TOKEN:
+                return generated[:safe]
+
             logits = self.llm.get_logits_from_input_ids(context + generated)
             if allowed is None:
                 token = self._pick(logits, ends)
@@ -128,10 +135,6 @@ class ParameterExtractor:
             if token in stop:
                 return generated
             generated.append(token)
-            if len(generated) > MAX_TOKEN:
-                raise ValueError(
-                    f"Value not completed after {MAX_TOKEN} tokens"
-                )
             try:
                 allowed = gen.send(token)
             except StopIteration as end:
@@ -139,7 +142,7 @@ class ParameterExtractor:
 
     def extract(
         self, func: FunctionDefinitions, request: str
-    ) -> dict[str, str]:
+    ) -> dict[str, Any]:
         prompt = self.build_prompt(func, request) + "{"
         ids = self.llm.encode(prompt)[0].tolist()
         result: dict[str, str] = {}
@@ -148,18 +151,18 @@ class ParameterExtractor:
             chunk = ("" if i == 0 else " ,") + f'"{name}": '
             if parameter.type == "string":
                 chunk += '"'
+                stop = (self.vocab.quote_id,)
+            else:
+                stop = (self.vocab.comma_id, self.vocab.brace_close_id)
 
             prompt, ids = self._inject(prompt, chunk)
 
-            value_ids = self.generate(
-                ids,
-                parameter.type,
-                (
-                    self.vocab.brace_close_id,
-                    self.vocab.comma_id,
-                    self.vocab.quote_id,
-                ),
-            )
+            try:
+                value_ids = self.generate(ids, parameter.type, stop)
+            except ValueError as e:
+                print(f"{func.name}.{name}: {e}", file=sys.stderr)
+                value_ids = []
+
             result[name] = self.llm.decode(value_ids)
             prompt, ids = self._inject(prompt, result[name])
             if parameter.type == "string":

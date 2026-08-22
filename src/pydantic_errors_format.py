@@ -2,7 +2,7 @@ import sys
 import os
 from pydantic_core import ErrorDetails
 from typing import Any, TextIO
-from srcs.constants import Colors
+from src.constants import Colors
 
 
 def _paint(text: str, code: str, stream: TextIO | None = None) -> str:
@@ -28,7 +28,7 @@ def _get_formatted(error: ErrorDetails) -> str:
         case "string_type":
             return f"Object {index}: {path} must be text"
         case "dict_type" | "model_type":
-            return f"Object {repr(index)}: path must be an object"
+            return f"Object {repr(index)}: {path} must be an object"
         case "list_type":
             return f"Object {index}: {path} must be an array"
         case "literal_error":
@@ -49,6 +49,6 @@ def _get_formatted(error: ErrorDetails) -> str:
             return f"{path}: {error['msg']}"
 
 
-def print_formatted_errors(errors: list[ErrorDetails]):
+def print_formatted_errors(errors: list[ErrorDetails]) -> None:
     for error in errors:
         print(_get_formatted(error), file=sys.stderr)

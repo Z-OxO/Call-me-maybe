@@ -8,3 +8,8 @@ wheels/
 
 # Virtual environments
 .venv
+
+# Vs code
+.vscode/
+
+data/output/

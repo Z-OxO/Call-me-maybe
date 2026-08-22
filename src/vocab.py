@@ -3,7 +3,7 @@ from dataclasses import dataclass
 
 # from pydantic.dataclasses import dataclass
 from llm_sdk.llm_sdk import Small_LLM_Model
-from srcs.constants import FORBIDDEN_STR
+from src.constants import FORBIDDEN_STR
 
 
 @dataclass(frozen=True, slots=True)
